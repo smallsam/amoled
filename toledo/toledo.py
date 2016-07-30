@@ -33,6 +33,7 @@
 import sys
 import getopt
 import serial
+import socket
 
 from operator import xor
 
@@ -59,6 +60,7 @@ def main(argv):
     global _version
     global _output
     global _debug
+    global _tcp
     
     _port       = "COM7"
     _message    = "snicklfritz982342"
@@ -79,9 +81,10 @@ def main(argv):
     _version    = "0.0.4.3"
     _output     = 0
     _debug      = 0
+    _tcp        = 0
    
     try:
-        opts, args = getopt.getopt(argv, "hvof:s:l:m:p:c:", ["help", "raw=", "version", "output", "font=", "sid=", "line=", "message=", "port=", "intro=", "exit=", "speed=", "bell=", "color=", "date", "time", "link=", "page=", "runpage=", "debug"])
+        opts, args = getopt.getopt(argv, "hvof:s:l:m:p:c:", ["help", "raw=", "version", "output", "font=", "sid=", "line=", "message=", "port=", "intro=", "exit=", "speed=", "bell=", "color=", "date", "time", "link=", "page=", "runpage=", "debug","tcp"])
     except getopt.GetoptError:
         usage()
         sys.exit(2)
@@ -96,6 +99,8 @@ def main(argv):
             sys.exit()
         if opt in ("-v", "--version"):
             print "toledo version", _version
+        if opt in ("--tcp"):
+            _tcp = 1
         if opt == '--debug':
             _debug = 1
             print "set debugging ON"
@@ -303,7 +308,7 @@ def toled():
         print finalMessage
     
     if (_output ==1):
-        serout(finalMessage)
+        msgout(finalMessage)
         
 def tolink():
     inMessage = "<TA>00010100009912302359%s" % (_link)
@@ -311,7 +316,7 @@ def tolink():
     finalMessage = "<ID%s>%s%s<E>" % (_sid,inMessage,outMessage)
     if (_debug == 1):
         print finalMessage
-    serout(finalMessage)
+    msgout(finalMessage)
     
 def torun():
     # the runpage command is in the protocol, and the sign will return ACK on properly formatted
@@ -322,7 +327,7 @@ def torun():
     finalMessage = "<ID%s>%s%s<E>" % (_sid,inMessage,outMessage)
     if (_debug == 1):
         print finalMessage
-    serout(finalMessage)
+    msgout(finalMessage)
 
 def toraw():
     # this is for sending straight up commands using protocol syntax to the LED sign
@@ -332,7 +337,7 @@ def toraw():
     finalMessage = "<ID%s>%s%s<E>" % (_sid,inMessage, outMessage)
     if (_debug == 1):
         print finalMessage
-    serout(finalMessage)
+    msgout(finalMessage)
     
 def checksum(inMessage):
     result = 0    
@@ -350,6 +355,7 @@ def usage():
     print "-h (--help)       This screen"
     print "-v (--version)    Show toledo version"
     print "-p (--port=)      Set the port for use (default /dev/tty.usbserial)"
+    print "--tcp             Enable TCP mode for serial console servers, set --port to <ip>:<port>"
     print "-d (--debug)      Enable debug mode (verbose, call this flag first)"
     print "-s (--sid=)       Which Sign ID is in use (default 00)"
     print "   --intro=       Set the intro effect (1-16)"
@@ -397,6 +403,30 @@ def serout(finalMessage):
     response = ser.read(4)
     print response
     ser.close 
+
+def tcpout(finalMessage):
+   # set up socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect((_port.split(':')[0],int(_port.split(':')[1])))
+    
+    # the amplus boards need to be "initialized", if after a lengthy period without
+    ## programming, they won't respond until they've gotten a valid string,
+    ## so we send two "valid" strings
+    sock.send(finalMessage)
+    sock.send(finalMessage)
+    
+    # wait for a response, 3s is probably a bit long, and may be reduced in the future
+    ## basically we're just watching for NACK or ACK, hence the four bytes
+    ## not all amplus boards respond with NACK or ACK
+    #response = sock.recv(3)
+    #print response
+    sock.close
+
+def msgout(finalMessage):
+    if _tcp:
+        tcpout(finalMessage)
+    else:
+        serout(finalMessage)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
